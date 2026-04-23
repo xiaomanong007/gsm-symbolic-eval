@@ -1,11 +1,12 @@
 """
 Compare evaluation results across variants and methods.
 
-Generates 4 MATLAB-style charts saved to results/plots/:
-  1. baseline_comparison.png        — baseline, all 3 variants
-  2. formal_comparison.png          — formal with template, all 3 variants
-  3. formal_no_template_comparison.png — formal without template, all 3 variants
-  4. all_methods_comparison.png     — all 3 methods side by side, all 3 variants
+Generates 5 MATLAB-style charts saved to results/plots/:
+  1. baseline_comparison.png            — baseline, all 3 variants
+  2. formal_comparison.png              — formal with template, all 3 variants
+  3. formal_no_template_comparison.png  — formal without template, all 3 variants
+  4. all_methods_comparison.png         — all 3 methods side by side, all 3 variants
+  5. all_methods_comparison_lines.png   — lines only, all 3 methods, all 3 variants
 
 Also prints a text summary table.
 
@@ -42,11 +43,10 @@ VARIANT_LABELS = {
     "GSM_p2":       "GSM-P2",
 }
 
-# key prefixes used in summary.json paths
 VARIANT_KEYS = {
-    "baseline":         {"GSM_symbolic": "GSM_symbolic",                      "GSM_p1": "GSM_p1",                      "GSM_p2": "GSM_p2"},
-    "formal":           {"GSM_symbolic": "formal_GSM_symbolic",               "GSM_p1": "formal_GSM_p1",               "GSM_p2": "formal_GSM_p2"},
-    "formal_no_tmpl":   {"GSM_symbolic": "formal_no_template_GSM_symbolic",   "GSM_p1": "formal_no_template_GSM_p1",   "GSM_p2": "formal_no_template_GSM_p2"},
+    "baseline":       {"GSM_symbolic": "GSM_symbolic",                    "GSM_p1": "GSM_p1",          "GSM_p2": "GSM_p2"},
+    "formal":         {"GSM_symbolic": "formal_GSM_symbolic",             "GSM_p1": "formal_GSM_p1",   "GSM_p2": "formal_GSM_p2"},
+    "formal_no_tmpl": {"GSM_symbolic": "formal_no_template_GSM_symbolic", "GSM_p1": "formal_no_template_GSM_p1", "GSM_p2": "formal_no_template_GSM_p2"},
 }
 
 # MATLAB-style colors
@@ -78,12 +78,6 @@ def load_summary(results_dir: str, variant_key: str) -> dict | None:
 
 
 def load_method_data(results_dir: str, variant_keys: dict) -> dict:
-    """
-    Load mean/std for all 3 variants from a results directory.
-
-    Returns:
-        {variant: {"mean": float, "std": float} | None}
-    """
     out = {}
     for v in VARIANTS:
         key  = variant_keys[v]
@@ -97,7 +91,6 @@ def load_method_data(results_dir: str, variant_keys: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def apply_matlab_style(ax: plt.Axes, title: str) -> None:
-    """Apply consistent MATLAB-style formatting to an axes."""
     ax.set_xlabel("Variant", fontsize=12, fontweight="bold")
     ax.set_ylabel("Accuracy (%)", fontsize=12, fontweight="bold")
     ax.set_title(title, fontsize=13, fontweight="bold")
@@ -112,11 +105,12 @@ def apply_matlab_style(ax: plt.Axes, title: str) -> None:
 def draw_bars(
     ax: plt.Axes,
     x: np.ndarray,
-    series: list[dict],   # [{"label": str, "color": str, "means": list, "stds": list}]
+    series: list[dict],
+    bar_width: float = None,    # override bar width; default = 0.7 / n_series
 ) -> None:
     """Draw grouped bars with error bars and value labels."""
-    n      = len(series)
-    width  = 0.7 / max(n, 1)
+    n     = len(series)
+    width = bar_width if bar_width is not None else 0.7 / max(n, 1)
 
     for i, s in enumerate(series):
         offset = (i - n / 2 + 0.5) * width
@@ -171,8 +165,7 @@ def plot_single_method(
     out_path: str,
 ) -> None:
     """
-    One bar per variant, single color.
-    Used for baseline, formal, formal_no_template individual plots.
+    One bar per variant, single color, thinner bars for a cleaner look.
     """
     x     = np.arange(len(VARIANTS))
     means = [method_data[v]["mean"] if method_data[v] else 0 for v in VARIANTS]
@@ -180,7 +173,11 @@ def plot_single_method(
 
     fig, ax = plt.subplots(figsize=(7, 5))
 
-    draw_bars(ax, x, [{"label": model_label, "color": color, "means": means, "stds": stds}])
+    draw_bars(
+        ax, x,
+        [{"label": model_label, "color": color, "means": means, "stds": stds}],
+        bar_width=0.35,     # thinner than default 0.7
+    )
 
     ax.set_xticks(x)
     ax.set_xticklabels([VARIANT_LABELS[v] for v in VARIANTS], fontsize=10)
@@ -190,7 +187,7 @@ def plot_single_method(
 
 
 # ---------------------------------------------------------------------------
-# Combined plot (graph 4)
+# Combined plot with bars (graph 4)
 # ---------------------------------------------------------------------------
 
 def plot_all_methods(
@@ -229,6 +226,7 @@ def plot_all_methods(
     plt.tight_layout()
     save_fig(fig, out_path)
 
+
 # ---------------------------------------------------------------------------
 # Lines-only plot (graph 5)
 # ---------------------------------------------------------------------------
@@ -258,7 +256,6 @@ def plot_all_methods_lines(
     fig, ax = plt.subplots(figsize=(8, 5))
 
     for s in series:
-        # filter out None values
         valid_x = [xi for xi, m in zip(x, s["means"]) if m is not None]
         valid_y = [m  for m      in s["means"]          if m is not None]
 
@@ -278,7 +275,6 @@ def plot_all_methods_lines(
             zorder=3,
         )
 
-        # value labels above each point
         for xi, yi in zip(valid_x, valid_y):
             ax.text(
                 xi, yi + 0.8,
@@ -287,7 +283,6 @@ def plot_all_methods_lines(
                 fontsize=8, color=s["color"], fontweight="bold",
             )
 
-        # drop annotation between first and last point
         if len(valid_y) >= 2:
             drop = valid_y[0] - valid_y[-1]
             if drop > 0:
@@ -342,6 +337,7 @@ def print_table(
     print(sep)
     print("\nFormat: mean% ± std%  across instance sets\n")
 
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -380,7 +376,7 @@ if __name__ == "__main__":
         out_path    = f"{PLOTS_DIR}/formal_no_template_comparison.png",
     )
 
-    # graph 4 — all methods
+    # graph 4 — all methods (bars)
     plot_all_methods(
         baseline_data,
         formal_data,
@@ -388,6 +384,7 @@ if __name__ == "__main__":
         out_path = f"{PLOTS_DIR}/all_methods_comparison.png",
     )
 
+    # graph 5 — all methods (lines only)
     plot_all_methods_lines(
         baseline_data,
         formal_data,
